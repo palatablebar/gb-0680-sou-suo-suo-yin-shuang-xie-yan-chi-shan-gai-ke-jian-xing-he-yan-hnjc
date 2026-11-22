@@ -20,10 +20,13 @@ docker compose exec -T app pytest -q
 - 5. 延迟闸门：`/latency`，`/api/latency`。
 - 6. 双写对账：`/parity`，`/api/parity`。
 - 7. 回补归档：`/backfills`，`/api/backfills`。
+- 核验水位：`/watermark`，`/api/watermark`（小时增量扫描、双水位裁决、迟到回补与证据导出，见 `docs/API.md`）。
 
 ## 核心规则
 
 按源版本重建目标可见状态，删除墓碑拦截迟到旧写入；延迟与缺失分开定责。
+
+水位裁决：到达时刻（observed_at）与事件时间（source_time）分离。观测前沿取最大到达时刻、只进不退；覆盖水位取观测前沿回退 `max(桶宽,允许迟到)` 并对齐桶边界，只在桶成熟后前移、永不越过观测前沿。已关闭桶内补见的事件记为迟到回补而不跳过；扫描按 `(输入摘要,scan_time,参数)` 幂等，重跑同批不改换结论；页面与归档导出共用同一份快照。
 
 ## 演示
 

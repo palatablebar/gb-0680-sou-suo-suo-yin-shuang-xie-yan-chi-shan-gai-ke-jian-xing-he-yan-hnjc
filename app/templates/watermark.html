@@ -1,0 +1,118 @@
+{% extends 'base.html' %}
+{% block kpi %}
+<div class="kpis">
+  {% if snap %}
+  <div class="kpi">观测前沿<b>{{ snap.watermark.observed_frontier[11:19] if snap.watermark.observed_frontier else '—' }}</b></div>
+  <div class="kpi">覆盖水位<b>{{ snap.watermark.coverage_frontier[11:19] if snap.watermark.coverage_frontier else '—' }}</b></div>
+  <div class="kpi">已覆盖事件<b>{{ snap.counts.covered + snap.counts.late_backfill }}</b></div>
+  <div class="kpi">迟到回补<b>{{ snap.counts.late_backfill }}</b></div>
+  <div class="kpi">空档<b>{{ snap.counts.gap_empty }}</b></div>
+  <div class="kpi">未覆盖桶<b>{{ snap.counts.uncovered_pending }}</b></div>
+  {% else %}
+  <div class="kpi">尚未建档<b>请先扫描</b></div>
+  {% endif %}
+</div>
+{% endblock %}
+{% block command %}{% endblock %}
+{% block board %}
+<div class="grid">
+  <section class="panel">
+    <div class="panel__head"><h2>核验水位 / 双水位裁决</h2>
+      <a class="btn" href="/api/watermark/archive">归档导出</a>
+    </div>
+    <div class="panel__body command-strip">
+      <select id="wm-preset" aria-label="扫描样例">
+        <option value="dirty.csv">删改乱序·回放批</option>
+        <option value="clean.csv">常规双写</option>
+        <option value="legacy.csv">旧编码流</option>
+      </select>
+      <label>扫描时刻(UTC)<input id="wm-scan-time" type="text" placeholder="2026-11-16T11:00:00Z"></label>
+      <label>默认到达时刻<input id="wm-observed-at" type="text" placeholder="缺 observed_at 列时使用"></label>
+      <label>桶宽/秒<input id="wm-bucket" type="number" value="3600"></label>
+      <label>允许迟到/秒<input id="wm-lateness" type="number" value="3600"></label>
+      <button class="primary" id="wm-scan">推进扫描</button>
+      <button id="wm-reset">重置水位</button>
+      <span id="wm-error" role="status"></span>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel__head"><h2>水位状态</h2><span>RULE {{ rule_version }}</span></div>
+    <div class="panel__body">
+      {% if snap %}
+      <div class="metric"><span>观测前沿 observed_frontier</span><b>{{ snap.watermark.observed_frontier or '—' }}</b></div>
+      <div class="metric"><span>覆盖水位 coverage_frontier</span><b>{{ snap.watermark.coverage_frontier or '—' }}</b></div>
+      <div class="metric"><span>桶宽 / 允许迟到 (秒)</span><b>{{ snap.watermark.bucket_seconds }} / {{ snap.watermark.allowed_lateness_seconds }}</b></div>
+      <div class="metric"><span>本次水位是否前移</span><b>{{ '是' if snap.watermark.moved else '否（重放或未成熟）' }}</b></div>
+      <div class="metric"><span>最近扫描</span><b>{{ snap.scan.scan_time if snap.scan else '—' }}</b></div>
+      {% else %}<div class="empty">尚无扫描批次。</div>{% endif %}
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel__head"><h2>事件台账（含迟到回补）</h2><span>{{ snap.counts.events if snap else 0 }} 条</span></div>
+    <div class="table-scroll">
+      <table class="version-ledger">
+        <thead><tr><th>事件号</th><th>文档号</th><th>事件时间(UTC)</th><th>到达时刻(UTC)</th><th>结论</th><th>源行</th></tr></thead>
+        <tbody id="wm-events">
+          {% if snap %}{% for e in snap.events %}
+          <tr class="{{ 'mismatch' if e.classification=='LATE_BACKFILL' else '' }}">
+            <td>{{ e.event_id }}</td><td>{{ e.doc_id }}</td><td>{{ e.event_time[11:19] }}</td>
+            <td>{{ e.observed_at[11:19] }}</td><td>{{ {'LATE_BACKFILL':'迟到回补','COVERED':'已覆盖','IN_WINDOW':'观察窗内','FUTURE_EVENT':'前沿之外'}[e.classification] }}</td>
+            <td>{{ e.source_line }}</td>
+          </tr>
+          {% endfor %}{% endif %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <div class="stack">
+    <section class="panel">
+      <div class="panel__head"><h2>空档与未覆盖原因</h2><span>可追回</span></div>
+      <div class="panel__body">
+        {% if snap and snap.gaps %}{% for g in snap.gaps %}
+        <div class="qrow"><b>{{ g.reason }}</b> / {{ g.bucket_start }} / {{ g.detail }}</div>
+        {% endfor %}{% else %}<div class="empty">无空档记录。</div>{% endif %}
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel__head"><h2>隔离原始行</h2><span>{{ snap.counts.quarantine if snap else 0 }} 行</span></div>
+      <div class="panel__body">
+        {% if snap and snap.quarantine %}{% for q in snap.quarantine %}
+        <div class="qrow">{{ q.source_line }} / <b>{{ q.reason }}</b> / {{ q.detail }}</div>
+        {% endfor %}{% else %}<div class="empty">无隔离行。</div>{% endif %}
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel__head"><h2>扫描批次（重放幂等）</h2><span>{{ snap.scans|length if snap else 0 }}</span></div>
+      <div class="log-tail">
+        {% if snap %}{% for s in snap.scans %}
+        <div class="log-line"><time>{{ s.scan_time[11:19] }}</time><strong>#{{ s.seq }}</strong> 采纳 {{ s.metrics.accepted }} · 隔离 {{ s.metrics.quarantine }} · {{ s.scan_key[:8] }}</div>
+        {% endfor %}{% endif %}
+      </div>
+    </section>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const wmError=document.querySelector('#wm-error');
+async function wmCall(url,payload){
+  wmError.textContent='扫描中…';
+  try{
+    const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const j=await r.json();
+    if(!r.ok)throw Error(j.message||('HTTP '+r.status));
+    location.reload();
+  }catch(e){wmError.textContent=e.message;}
+}
+document.querySelector('#wm-scan').addEventListener('click',()=>{
+  const parameters={bucket_seconds:document.querySelector('#wm-bucket').value,allowed_lateness_seconds:document.querySelector('#wm-lateness').value};
+  const st=document.querySelector('#wm-scan-time').value.trim();const oa=document.querySelector('#wm-observed-at').value.trim();
+  if(st)parameters.scan_time=st; if(oa)parameters.observed_at=oa;
+  wmCall('/api/watermark/scan',{sample:document.querySelector('#wm-preset').value,parameters});
+});
+document.querySelector('#wm-reset').addEventListener('click',()=>fetch('/api/watermark/reset',{method:'POST'}).then(()=>location.reload()));
+</script>
+{% endblock %}

@@ -13,6 +13,7 @@
 | M5 延迟闸门 | 查看并运行延迟闸门 | `/api/latency` | `app/modules/m5_latency/rules.py` | `tests/test_m5.py` |
 | M6 双写对账 | 查看并运行双写对账 | `/api/parity` | `app/modules/m6_parity/rules.py` | `tests/test_m6.py` |
 | M7 回补归档 | 查看并运行回补归档 | `/api/backfills` | `app/modules/m7_backfills/rules.py` | `tests/test_m7.py` |
+| 核验水位 | 推进小时增量水位并追回迟到事件 | `/api/watermark` | `app/watermark/service.py` | `tests/test_watermark.py` |
 
 ## 陷阱登记
 
@@ -31,6 +32,10 @@
 | TRAP-09 | 超大版本 | JSON精度损失 | 文本序列化 | `app/values.py` | `tests/test_m2.py::test_large_version_precise` |
 | TRAP-13 | 删除后迟到旧写 | 文档复活 | 最大版本墓碑 | `app/modules/m3_versions/rules.py` | `tests/test_m3.py::test_tombstone_beats_late_old_write` |
 | TRAP-23 | 延迟阈值边界 | 多判延迟 | 等于阈值通过 | `app/modules/m5_latency/rules.py` | `tests/test_m5.py::test_threshold_equal_pass` |
+| TRAP-30 | 最大到达时刻当水位 | 迟到事件被永久跳过 | 双水位+安全余量，覆盖水位只在桶成熟后前移 | `app/watermark/rules.py` | `tests/test_watermark.py::test_watermark_advances_only_on_maturity` |
+| TRAP-31 | 每轮从起点重扫 | 巡检无法推进 | 观测前沿只进不退+回看带承接迟到 | `app/watermark/service.py` | `tests/test_watermark.py::test_late_event_in_covered_range_is_backfilled_not_skipped` |
+| TRAP-32 | 重跑改换结论 | 同批结论漂移 | scan_key 幂等，重放只回显 | `app/watermark/store.py` | `tests/test_watermark.py::test_replay_same_batch_is_idempotent` |
+| TRAP-33 | 页面与导出各算一份 | 覆盖结论不一致 | 页面与归档共用 `snapshot()` 同源数据 | `app/watermark/archive.py` | `tests/test_watermark.py::test_page_and_archive_share_snapshot` |
 
 ## 对账规则
 

@@ -48,6 +48,8 @@ def create_app():
     for index,(slug,title) in enumerate(MODULES,1):
         module=importlib.import_module(f"app.modules.m{index}_{slug}.handler")
         application.register_blueprint(module.bp)
+    from app.watermark.handler import bp as watermark_bp
+    application.register_blueprint(watermark_bp)
     register_pages(application)
     return application
 app=create_app()
